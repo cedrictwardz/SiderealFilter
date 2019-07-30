@@ -31,7 +31,7 @@ Note that it is assumed that the positions are given with respect to the first e
 
 [2] This code has been developed for 30 sec position time series, so I do not guarantee that it provides meaningfull results from shorter or longer sampling interval.
 
-[3] Please cite Twardzik et al. (2019) when the code has been used for publication.
+[3] Please cite Twardzik et al. (2019) when the code has been used for publication (doi:10.1038/s41598-019-39038-z).
 
 [4] The code do not handle potential foreshocks and aftershokcs. It acts as if there is only one earthquake.
 
