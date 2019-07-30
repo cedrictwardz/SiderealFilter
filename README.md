@@ -17,10 +17,13 @@ There are several variables that are hard-coded in the script. In particular, th
 ### Input files: 
 
 [1] "stations.in" gives the name and location of the receivers. It is not really useful but it is there anyway. The file is formatted the following: 
+
 LATITUDE LONGITUDE NAME
 
 [2] "XXXX.k.tdp" are the position time series. Here is how the file should be formated:
+
 YYYY mm dd HH MM SS.SSS GPS_TIME(S) NORTH(m) EAST(m) UP(m) 
+
 Note that it is assumed that the positions are given with respect to the first epoch in the time series
 
 ## Note:
@@ -31,3 +34,5 @@ Note that it is assumed that the positions are given with respect to the first e
 [3] Please cite Twardzik et al. (2019) when the code has been used for publication.
 
 [4] The code do not handle potential foreshocks and aftershokcs. It acts as if there is only one earthquake.
+
+[5] The code uses standard library with the exception of the xcorr function which is taken from obspy (doi:10.5281/zenodo.1040770)
