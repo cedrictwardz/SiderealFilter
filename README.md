@@ -10,7 +10,9 @@ The code uses 30 sec kinematic position time series (XXXX.k.tdp). It uses the da
 
 ### Input variables: 
 
-The variables [eq] and [evla,evlo,evdp] at the beginning of the script need to be changed manually. It is possible to act like there is no earthquake by setting [eq] to some time in the future.
+The variables [eq] and [evla,evlo,evdp] at the beginning of the script need to be changed manually. It is possible to act like there is no earthquake by setting [eq] to some time in the future, but this has not been tested.
+
+There are several variables that are hard-coded in the script. In particular, there are safeguards that are used to check if there is a indeed a sidereal signature (line 137-139).
 
 ### Input files: 
 
