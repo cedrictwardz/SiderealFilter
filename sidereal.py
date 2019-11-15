@@ -135,14 +135,14 @@ for kfile in glob.glob('*.k.tdp'):
         # Ensure that the shifts are reasonable #
         # ------------------------------------- #
         if (nshift == 0) or (n_val < 4.0/3.0*nnoiz) or (np.abs(nshift) > max_shift): donot_north = True
-        if (eshift == 0) or (e_val < 4.0/3.0*enoiz) or (np.abs(nshift) > max_shift): donot_east  = True
-        if (ushift == 0) or (u_val < 4.0/3.0*enoiz) or (np.abs(nshift) > max_shift): donot_up    = True
+        if (eshift == 0) or (e_val < 4.0/3.0*enoiz) or (np.abs(eshift) > max_shift): donot_east  = True
+        if (ushift == 0) or (u_val < 4.0/3.0*enoiz) or (np.abs(ushift) > max_shift): donot_up    = True
         # ---------------------------- #
         # Extract the relevant portion #
         # ---------------------------- #
         nmax  = nstack.size
         n0    = int(3600.0/delta+0.5001)
-        n,e,u = n[n0-nshift:n0-nshift+nmax],e[n0-eshift:n0-eshift+nmax],u[n0-eshift:n0-eshift+nmax]
+        n,e,u = n[n0-nshift:n0-nshift+nmax],e[n0-eshift:n0-eshift+nmax],u[n0-ushift:n0-ushift+nmax]
         # -------------------------------- #
         # Add the current day to the stack #
         # -------------------------------- #
