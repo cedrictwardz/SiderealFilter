@@ -136,7 +136,7 @@ for kfile in glob.glob('*.k.tdp'):
         # ------------------------------------- #
         if (nshift == 0) or (n_val < 4.0/3.0*nnoiz) or (np.abs(nshift) > max_shift): donot_north = True
         if (eshift == 0) or (e_val < 4.0/3.0*enoiz) or (np.abs(eshift) > max_shift): donot_east  = True
-        if (ushift == 0) or (u_val < 4.0/3.0*enoiz) or (np.abs(ushift) > max_shift): donot_up    = True
+        if (ushift == 0) or (u_val < 4.0/3.0*unoiz) or (np.abs(ushift) > max_shift): donot_up    = True
         # ---------------------------- #
         # Extract the relevant portion #
         # ---------------------------- #
