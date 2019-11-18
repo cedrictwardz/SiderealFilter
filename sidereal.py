@@ -14,6 +14,7 @@ import obspy.signal.cross_correlation as xcorr
 eq             = dt.datetime(2015,9,16,22,54,32,860000)
 evla,evlo,evdp = -31.573,-71.674,22.4
 stalist        = open('stations.in','r').readlines()
+showme         = True
 
 # ------------------------- #
 # Loop over the time series #
@@ -102,6 +103,19 @@ for kfile in glob.glob('*.k.tdp'):
     nstack = nstack - nstack[0]
     estack = estack - estack[0]
     ustack = ustack - ustack[0]
+    # ---------------------- #
+    # Plot the initial stack #
+    # ---------------------- #
+    if showme:
+        time = np.arange(nstack.size) * delta
+        plt.figure(figsize=(10,8))
+        plt.subplot(311)
+        plt.plot(time,nstack,'k',alpha=0.5)
+        plt.subplot(312)
+        plt.plot(time,estack,'k',alpha=0.5)
+        plt.subplot(313)
+        plt.plot(time,ustack,'k',alpha=0.5)
+        plt.pause(1)
     # ------------------------------------- #
     # Stack the days before the earthquakes #
     # ------------------------------------- #
@@ -131,6 +145,18 @@ for kfile in glob.glob('*.k.tdp'):
         nshift,n_val      = xcorr.xcorr_max(ncc,abs_max=False)
         eshift,e_val      = xcorr.xcorr_max(ecc,abs_max=False)
         ushift,u_val      = xcorr.xcorr_max(ucc,abs_max=False)
+        # ---------------------------------------- #
+        # Plot the result of the cross-correlation #
+        # ---------------------------------------- #
+        if showme:
+            time = np.arange(n.size) * delta - 3600.0
+            plt.subplot(311)
+            plt.plot(time+nshift*delta,n,'k',alpha=0.5)
+            plt.subplot(312)
+            plt.plot(time+eshift*delta,e,'k',alpha=0.5)
+            plt.subplot(313)
+            plt.plot(time+ushift*delta,u,'k',alpha=0.5)
+            plt.pause(1)
         # ------------------------------------- #
         # Ensure that the shifts are reasonable #
         # ------------------------------------- #
@@ -153,6 +179,19 @@ for kfile in glob.glob('*.k.tdp'):
     # Normalize the stacks #
     # -------------------- #
     nstack,estack,ustack = nstack/ntrace[0],estack/ntrace[1],ustack/ntrace[2]
+    # -------------------- #
+    # Plot the final stack #
+    # -------------------- #
+    if showme:
+        time = np.arange(nstack.size) * delta
+        plt.subplot(311)
+        plt.plot(time,nstack,'r',alpha=0.75)
+        plt.subplot(312)
+        plt.plot(time,estack,'r',alpha=0.75)
+        plt.subplot(313)
+        plt.plot(time,ustack,'r',alpha=0.75)
+        plt.pause(5)
+        
     ####################### SIDEREAL FILTER TEMPLATE ######################
     
     # ---------------------------------------- #
