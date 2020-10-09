@@ -1,312 +1,254 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
   
-import numpy                          as np
-import glob                           as glob
-import datetime                       as dt
-import scipy.stats                    as stats
-import scipy.signal                   as signal
-import matplotlib.pyplot              as plt
+import numpy as np
+import scipy.stats as stats
+import scipy.signal as signal
+import datetime as datetime
+import matplotlib.pyplot as plt
 import obspy.signal.cross_correlation as xcorr
 
-# --------- #
-# Mainshock #
-# --------- #
-eq             = dt.datetime(2015,9,16,22,54,32,860000)
-evla,evlo,evdp = -31.573,-71.674,22.4
-stalist        = open('stations.in','r').readlines()
-showme         = True
+def filter(date, time, north, east, up, eq):
 
-# ------------------------- #
-# Loop over the time series #
-# ------------------------- #
-for kfile in glob.glob('*.k.tdp'):
-    # -------------------- #
-    # Load the time series #
-    # -------------------- #
-    ts    = np.loadtxt(kfile)
-    nt    = ts.shape[0]
-    delta = ts[1,6] - ts[0,6]
-    date  = np.asarray([dt.datetime(np.int(ts[i,0]),np.int(ts[i,1]),np.int(ts[i,2]),np.int(ts[i,3]),np.int(ts[i,4]),np.int(ts[i,5])) for i in range(nt)])
-    time  = ts[:,6] - ts[0,6]
-    north = ts[:,7] * 1000.0
-    east  = ts[:,8] * 1000.0
-    up    = ts[:,9] * 1000.0
-    stnm  = kfile.split('/')[-1].split('.')[0]
-    # --------------------------------------- #
-    # Extract the coordinates of the receiver #
-    # --------------------------------------- #
-    stla,stlo = [[np.float(stalist[i].split()[0]),np.float(stalist[i].split()[1])] for i in range(len(stalist)) if stnm in stalist[i].split()[2]][0]
-    # --------------- #
-    # Remove the mean #
-    # --------------- #
-    north = north - np.mean(north[date<eq])
-    east  = east  - np.mean(east [date<eq])
-    up    = up    - np.mean(up   [date<eq])
-    # ------------------------ #
-    # Calculate a linear trend #
-    # ------------------------ #
-    nslope,nintercept,r_value,p_value,std_err = stats.linregress(time[date<eq],north[date<eq])
-    eslope,eintercept,r_value,p_value,std_err = stats.linregress(time[date<eq],east [date<eq])
-    uslope,uintercept,r_value,p_value,std_err = stats.linregress(time[date<eq],up   [date<eq])
-    # --------------------- #
-    # Remove a linear trend #
-    # --------------------- #
+    # Find the sampling interval
+    dt = np.diff(time).min()
+
+    # Remove the mean
+    north -= north[date < eq].mean()
+    east  -= east [date < eq].mean()
+    up    -= up   [date < eq].mean()
+
+    # Compute a linear trend
+    nslope, nintercept, _, _, _ = stats.linregress(time[date<eq],north[date<eq])
+    eslope, eintercept, _, _, _ = stats.linregress(time[date<eq],east [date<eq])
+    uslope, uintercept, _, _, _ = stats.linregress(time[date<eq],up   [date<eq])
+
+    # Remove the linear trend
     north = north - (nslope*time + nintercept)
     east  = east  - (eslope*time + eintercept)
     up    = up    - (uslope*time + uintercept)
-    # ----------------------------------------- #
-    # Find the last point before the earthquake #
-    # ----------------------------------------- #
-    ib    = np.where(date <= eq+dt.timedelta(seconds=30.0))[0]
-    nlast = north[ib[-1]]
-    elast = east [ib[-1]]
-    ulast = up   [ib[-1]]
-    # -------------------------------- #
-    # Remove gaps from the time series #
-    # -------------------------------- #
-    fulltime         = np.arange(time[0],time[-1]+delta,delta)
-    fulldate         = np.asarray( [date[0] + dt.timedelta(seconds=i*delta) for i in range(fulltime.size)] )
-    fullnorth        = np.ones(fulltime.size) * nlast
-    fulleast         = np.ones(fulltime.size) * elast
-    fullup           = np.ones(fulltime.size) * ulast
-    index            = np.where(np.isin(fulltime,time))[0]
-    fullnorth[index] = north.copy()
-    fulleast [index] = east .copy()
-    fullup   [index] = up   .copy()
-    # ------------------------------------------------------ #
-    # Remove the co-seismic offset from the full time series #
-    # ------------------------------------------------------ #
-    ib            = np.where(fulldate <= eq+dt.timedelta(seconds=30.0))[0]
-    ia            = np.where(fulldate >= eq+dt.timedelta(minutes= 5.5))[0]
-    offset_north  = fullnorth[ia[0]] - fullnorth[ib[-1]]
-    offset_east   = fulleast [ia[0]] - fulleast [ib[-1]]
-    offset_up     = fullup   [ia[0]] - fullup   [ib[-1]]
-    fullnorth[ia] = fullnorth[ia] - offset_north
-    fulleast [ia] = fulleast [ia] - offset_east
-    fullup   [ia] = fullup   [ia] - offset_up
-    # ------------------------------- #
-    # Guess the maximum shift allowed #
-    # ------------------------------- #
-    max_shift = int(fulltime[-1]/86400.0) * 236.0
-    max_shift = int(max_shift/delta+1.5001)
-    # --------------------- #
-    # Extract the first day #
-    # --------------------- #
-    ntrace = [1,1,1]
-    t0,t1  = fulldate[0],fulldate[0]+dt.timedelta(days=1)
-    nstack = fullnorth[(fulldate >= t0) & (fulldate < t1)]
-    estack = fulleast [(fulldate >= t0) & (fulldate < t1)]
-    ustack = fullup   [(fulldate >= t0) & (fulldate < t1)]
-    # ----------------------- #
-    # Start the stack at zero #
-    # ----------------------- #
-    nstack = nstack - nstack[0]
-    estack = estack - estack[0]
-    ustack = ustack - ustack[0]
-    # ---------------------- #
-    # Plot the initial stack #
-    # ---------------------- #
-    if showme:
-        time = np.arange(nstack.size) * delta
-        plt.figure(figsize=(10,8))
-        plt.subplot(311)
-        plt.plot(time,nstack,'k',alpha=0.5)
-        plt.subplot(312)
-        plt.plot(time,estack,'k',alpha=0.5)
-        plt.subplot(313)
-        plt.plot(time,ustack,'k',alpha=0.5)
-        plt.pause(1)
-    # ------------------------------------- #
-    # Stack the days before the earthquakes #
-    # ------------------------------------- #
-    while True:
-        # -------- #
-        # Logicals #
-        # -------- #
-        donot_north = False
-        donot_east  = False
-        donot_up    = False
-        # -------------------- #
-        # Extract the next day #
-        # -------------------- #
-        t0 = t1
-        t1 = t0+dt.timedelta(days=1)
-        # *** ENSURE WE ARE NOT GETTING DATA FROM AFTER THE EARTHQUAKE *** #
-        if t1+dt.timedelta(hours=1) >= eq or t0-dt.timedelta(hours=1) >= eq: break
-        n  = fullnorth[(fulldate >= t0-dt.timedelta(hours=1)) & (fulldate < t1+dt.timedelta(hours=1))]
-        e  = fulleast [(fulldate >= t0-dt.timedelta(hours=1)) & (fulldate < t1+dt.timedelta(hours=1))]
-        u  = fullup   [(fulldate >= t0-dt.timedelta(hours=1)) & (fulldate < t1+dt.timedelta(hours=1))]
-        # ------------------------------------------------------------------------------------------ #
-        # Cross-correlation between the current day and the stack and maximize the cross-correlation #
-        # ------------------------------------------------------------------------------------------ #
-        nmax              = nstack.size
-        ncc,ecc,ucc       = xcorr.correlate(nstack/ntrace[0],n,nmax),xcorr.correlate(estack/ntrace[1],e,nmax),xcorr.correlate(ustack/ntrace[2],u,nmax)
-        nnoiz,enoiz,unoiz = np.std(ncc),np.std(ecc),np.std(ucc)
-        nshift,n_val      = xcorr.xcorr_max(ncc,abs_max=False)
-        eshift,e_val      = xcorr.xcorr_max(ecc,abs_max=False)
-        ushift,u_val      = xcorr.xcorr_max(ucc,abs_max=False)
-        # ---------------------------------------- #
-        # Plot the result of the cross-correlation #
-        # ---------------------------------------- #
-        if showme:
-            time = np.arange(n.size) * delta - 3600.0
-            plt.subplot(311)
-            plt.plot(time+nshift*delta,n,'k',alpha=0.5)
-            plt.subplot(312)
-            plt.plot(time+eshift*delta,e,'k',alpha=0.5)
-            plt.subplot(313)
-            plt.plot(time+ushift*delta,u,'k',alpha=0.5)
-            plt.pause(1)
-        # ------------------------------------- #
-        # Ensure that the shifts are reasonable #
-        # ------------------------------------- #
-        if (nshift == 0) or (n_val < 4.0/3.0*nnoiz) or (np.abs(nshift) > max_shift): donot_north = True
-        if (eshift == 0) or (e_val < 4.0/3.0*enoiz) or (np.abs(eshift) > max_shift): donot_east  = True
-        if (ushift == 0) or (u_val < 4.0/3.0*unoiz) or (np.abs(ushift) > max_shift): donot_up    = True
-        # ---------------------------- #
-        # Extract the relevant portion #
-        # ---------------------------- #
-        nmax  = nstack.size
-        n0    = int(3600.0/delta+0.5001)
-        n,e,u = n[n0-nshift:n0-nshift+nmax],e[n0-eshift:n0-eshift+nmax],u[n0-ushift:n0-ushift+nmax]
-        # -------------------------------- #
-        # Add the current day to the stack #
-        # -------------------------------- #
-        if not donot_north: nstack += n - n[0] ; ntrace[0] += 1
-        if not donot_east : estack += e - e[0] ; ntrace[1] += 1
-        if not donot_up   : ustack += u - u[0] ; ntrace[2] += 1
-    # -------------------- #
-    # Normalize the stacks #
-    # -------------------- #
-    nstack,estack,ustack = nstack/ntrace[0],estack/ntrace[1],ustack/ntrace[2]
-    # -------------------- #
-    # Plot the final stack #
-    # -------------------- #
-    if showme:
-        time = np.arange(nstack.size) * delta
-        plt.subplot(311)
-        plt.plot(time,nstack,'r',alpha=0.75)
-        plt.subplot(312)
-        plt.plot(time,estack,'r',alpha=0.75)
-        plt.subplot(313)
-        plt.plot(time,ustack,'r',alpha=0.75)
-        plt.pause(5)
-        
-    ####################### SIDEREAL FILTER TEMPLATE ######################
-    
-    # ---------------------------------------- #
-    # Safeguard if not enough traces were used #
-    # ---------------------------------------- #
-    napply,eapply,uapply = True,True,True
-    if ntrace[0] <= 2: print "Not many traces have been used to create the sidereal filter (N)"; napply = False
-    if ntrace[1] <= 2: print "Not many traces have been used to create the sidereal filter (E)"; eapply = False
-    if ntrace[2] <= 2: print "Not many traces have been used to create the sidereal filter (U)"; uapply = False
-    
-    ####################### BUILD THE SIDEREAL FILTER #######################
-    # ------------------------------ #
-    # Initialize the sidereal filter #
-    # ------------------------------ #
-    tfilt = fulltime.copy()
-    nfilt = np.zeros(fullnorth.size)
-    efilt = np.zeros(fulleast .size)
-    ufilt = np.zeros(fullup   .size)
-    ndays = 0
-    while True:
-        # ---------------- #
-        # Extract each day #
-        # ---------------- #
-        t0 = fulldate[0] + dt.timedelta(days=ndays+0)
-        t1 = fulldate[0] + dt.timedelta(days=ndays+1)
-        if (t1 > fulldate[-1]): t1 = fulldate[-1]
-        n = fullnorth[(fulldate >= t0) & (fulldate < t1)]
-        e = fulleast [(fulldate >= t0) & (fulldate < t1)]
-        u = fullup   [(fulldate >= t0) & (fulldate < t1)]
-        t = np.arange(n.size) * delta
-        # ------------------------ #
-        # Calculate a linear trend #
-        # ------------------------ #
-        nslope,nintercept,r_value,p_value,std_err = stats.linregress(t,n)
-        eslope,eintercept,r_value,p_value,std_err = stats.linregress(t,e)
-        uslope,uintercept,r_value,p_value,std_err = stats.linregress(t,u)
-        # --------------------- #
-        # Remove a linear trend #
-        # --------------------- #
-        n = n - (nslope*t + nintercept)
-        e = e - (eslope*t + eintercept)
-        u = u - (uslope*t + uintercept)
-        # ----------------------------- #
-        # Compute the cross-correlation #
-        # ----------------------------- #
-        nmax        = e.size
-        ncc,ecc,ucc = xcorr.correlate(n,nstack[:nmax],nmax),xcorr.correlate(e,estack[:nmax],nmax),xcorr.correlate(u,ustack[:nmax],nmax)
-        # ----------------------------------- #
-        # Ensure that the shift is reasonable #
-        # ----------------------------------- #
-        ncc[:nmax-1/2-max_shift ] = 0.0
-        ncc[ nmax-1/2+max_shift:] = 0.0
-        ecc[:nmax-1/2-max_shift ] = 0.0
-        ecc[ nmax-1/2+max_shift:] = 0.0
-        ucc[:nmax-1/2-max_shift ] = 0.0
-        ucc[ nmax-1/2+max_shift:] = 0.0
-        # -------------- #
-        # Find the shift #
-        # -------------- #
-        nshift,val = xcorr.xcorr_max(ncc,abs_max=False)
-        eshift,val = xcorr.xcorr_max(ecc,abs_max=False)
-        ushift,val = xcorr.xcorr_max(ucc,abs_max=False)
-        # -------------------------- #
-        # Create the sidereal filter #
-        # -------------------------- #
-        t          = np.arange(e.size)*delta + ndays*86400.0
-        idx        = np.where(np.isin(tfilt,t))[0]
-        nfilt[idx] = (np.roll(nstack,nshift) * signal.tukey(nstack.size,alpha=0.05))[:idx.size]
-        efilt[idx] = (np.roll(estack,eshift) * signal.tukey(estack.size,alpha=0.05))[:idx.size]
-        ufilt[idx] = (np.roll(ustack,ushift) * signal.tukey(ustack.size,alpha=0.05))[:idx.size]
-        # ------------- #
-        # Exit strategy #
-        # ------------- #
-        if t1 >= fulldate[-1]: break
-        ndays = ndays + 1
-    ####################### BUILD THE SIDEREAL FILTER #######################
 
-    # -------------------------------- #
-    # Remove gaps from the time series #
-    # -------------------------------- #
-    fulltime         = np.arange(time[0],time[-1]+delta,delta)
-    fulldate         = np.asarray( [date[0] + dt.timedelta(seconds=i*delta) for i in range(fulltime.size)] )
-    fullnorth        = np.ones(fulltime.size) * np.float('nan')
-    fulleast         = np.ones(fulltime.size) * np.float('nan')
-    fullup           = np.ones(fulltime.size) * np.float('nan')
-    index            = np.where(np.isin(fulltime,time))[0]
-    fullnorth[index] = north
-    fulleast [index] = east
-    fullup   [index] = up
-    # -------------------------------------- #
-    # Compute the RMS before sidereal filter #
-    # -------------------------------------- #
-    nrms0 = np.std(north[(date<eq)])
-    erms0 = np.std(east [(date<eq)])
-    urms0 = np.std(up   [(date<eq)])
-    # ------------------------- #
-    # Apply the sidereal filter #
-    # ------------------------- #
-    fullup    = fullup    - ufilt
-    fulleast  = fulleast  - efilt
-    fullnorth = fullnorth - nfilt
-    idx       = np.where(np.isin(tfilt,time))[0]
-    if uapply: up    = fullup   [idx]
-    if eapply: east  = fulleast [idx]
-    if napply: north = fullnorth[idx]
-    # ------------------------------------- #
-    # Compute the RMS after sidereal filter #
-    # ------------------------------------- #
-    nrms1 = np.std(north[(date<eq)])
-    erms1 = np.std(east [(date<eq)])
-    urms1 = np.std(up   [(date<eq)])
-    # --------------------------------------- #
-    # Print the effect of the sidereal filter #
-    # --------------------------------------- #
-    print 'STATION %s' % stnm
-    print 'RMS before and after S.F. (north) = %7.2f/%7.2f (%7.2f)' % (nrms0,nrms1,(nrms0-nrms1)/nrms0*100.0)
-    print 'RMS before and after S.F. (east ) = %7.2f/%7.2f (%7.2f)' % (erms0,erms1,(erms0-erms1)/erms0*100.0)
-    print 'RMS before and after S.F. (up   ) = %7.2f/%7.2f (%7.2f)' % (urms0,urms1,(urms0-urms1)/urms0*100.0)
+    # Create the full time series
+    full_time        = np.arange(time[0], time[-1]+dt, dt)
+    full_date        = np.array([date[0] + datetime.timedelta(seconds=i*dt) for i in range(full_time.size)])
+    full_north       = np.full(full_time.size, np.nan)
+    full_east        = np.full(full_time.size, np.nan)
+    full_up          = np.full(full_time.size, np.nan)
+    ij, i, j         = np.intersect1d(time, full_time, assume_unique=True, return_indices=True)
+    full_north[j]    = north[i]
+    full_east [j]    = east [i]
+    full_up   [j]    = up   [i]
+
+    # Remove the coseismic offsets
+    ib             = np.where(full_date <= eq + datetime.timedelta(seconds=30.0))[0]
+    ia             = np.where(full_date >= eq + datetime.timedelta(minutes= 5.5))[0]
+    offset_n       = full_north[ia[0]] - full_north[ib[-1]]
+    offset_e       = full_east [ia[0]] - full_east [ib[-1]]
+    offset_u       = full_up   [ia[0]] - full_up   [ib[-1]]
+    full_north[ia] = full_north[ia] - offset_n
+    full_east [ia] = full_east [ia] - offset_e
+    full_up   [ia] = full_up   [ia] - offset_u
+    
+    # Remove the gaps in the time series using simple linear interpolation
+    nans             = np.isnan(full_north)
+    full_north[nans] = np.interp(full_time[nans], full_time[~nans], full_north[~nans])
+    full_east [nans] = np.interp(full_time[nans], full_time[~nans], full_east [~nans])
+    full_up   [nans] = np.interp(full_time[nans], full_time[~nans], full_up   [~nans])
+
+    # First guess on the max. time shift allowed
+    max_shift = np.int(full_time[-1]/86400.0 * 236.0 / dt + 1.5001)
+
+    # Extract the first day
+    ntrace  = [1, 1, 1]
+    t0, t1  = full_date[0], full_date[0]+datetime.timedelta(days=1)
+    index   = (t0 <= full_date) & (full_date < t1)
+    n_stack = full_north[index]
+    e_stack = full_east [index]
+    u_stack = full_up   [index]
+
+    # Start the stack at zero
+    t_stack  = np.arange(n_stack.size) * dt
+    n_stack -= n_stack[0]
+    e_stack -= e_stack[0]
+    u_stack -= u_stack[0]
+    
+    # Stack the days before the earthquake
+    while True:
+
+        # Set some logicals
+        do_not_n = False
+        do_not_e = False
+        do_not_u = False
+
+        # Extract the following day
+        t0 = t1
+        t1 = t0 + datetime.timedelta(days=1)
+
+        # Select the relevant date plus some overlap
+        index = (t0-datetime.timedelta(hours=1.0) <= full_date) & (full_date < t1+datetime.timedelta(hours=1.0))
+
+        # Ensure that we are not getting data from after the mainshock
+        if np.any(full_date[index] >= eq): break
+
+        # Select the relevant data
+        n  = full_north[index]
+        e  = full_east [index]
+        u  = full_up   [index]
+
+        # Cross-correlation between the current day and the stack
+        n_cc = xcorr.correlate(n_stack/ntrace[0], n, n_stack.size)
+        e_cc = xcorr.correlate(e_stack/ntrace[1], e, e_stack.size)
+        u_cc = xcorr.correlate(u_stack/ntrace[2], u, u_stack.size)
+
+        # Noise level of the cross-correlograms
+        n_noise = n_cc.std()
+        e_noise = e_cc.std()
+        u_noise = u_cc.std()
+
+        # Find the optimal shift to maximize the cross-correlation
+        n_shift, n_val = xcorr.xcorr_max(n_cc, abs_max=False)
+        e_shift, e_val = xcorr.xcorr_max(e_cc, abs_max=False)
+        u_shift, u_val = xcorr.xcorr_max(u_cc, abs_max=False)
+
+        # Check if the trace should be use for stacking
+        if (n_shift == 0) or (n_val < 4.0/3.0*n_noise) or (np.abs(n_shift) > max_shift): do_not_n = True
+        if (e_shift == 0) or (e_val < 4.0/3.0*e_noise) or (np.abs(e_shift) > max_shift): do_not_e = True
+        if (u_shift == 0) or (u_val < 4.0/3.0*u_noise) or (np.abs(u_shift) > max_shift): do_not_u = True
+
+        # Count the number of trace in the stack
+        ntrace[0] += (not do_not_n)
+        ntrace[1] += (not do_not_e)
+        ntrace[2] += (not do_not_u)
+
+        # Extract the relevant portion of the trace
+        i0 = np.int(3600.0/dt + 0.5001)
+        if not do_not_n: n_stack += (n[i0-n_shift:i0-n_shift+n_stack.size] - n[i0-n_shift])
+        if not do_not_e: e_stack += (e[i0-e_shift:i0-e_shift+e_stack.size] - e[i0-e_shift])
+        if not do_not_u: u_stack += (u[i0-u_shift:i0-u_shift+u_stack.size] - u[i0-u_shift])
+          
+    # Remove the mean
+    n_stack -= n_stack.mean()
+    e_stack -= e_stack.mean()
+    u_stack -= u_stack.mean()
+
+    # Calculate a linear trend
+    n_slope, n_intercept, _, _, _ = stats.linregress(t_stack, n_stack)
+    e_slope, e_intercept, _, _, _ = stats.linregress(t_stack, e_stack)
+    u_slope, u_intercept, _, _, _ = stats.linregress(t_stack, u_stack)
+
+    # Remove the linear trend
+    n_stack = n_stack - (n_slope*t_stack + n_intercept)
+    e_stack = e_stack - (e_slope*t_stack + e_intercept)
+    u_stack = u_stack - (u_slope*t_stack + u_intercept)
+
+    # Average all the traces
+    n_stack /= ntrace[0]
+    e_stack /= ntrace[1]
+    u_stack /= ntrace[2]
+
+    # Safeguard in case not enough traces have been used to build the stack
+    n_apply = True
+    e_apply = True
+    u_apply = True
+    if ntrace[0] <= 2: print("Not many traces have been used to create the sidereal filter (N)"); n_apply = False
+    if ntrace[1] <= 2: print("Not many traces have been used to create the sidereal filter (E)"); e_apply = False
+    if ntrace[2] <= 2: print("Not many traces have been used to create the sidereal filter (U)"); u_apply = False
+
+    # Initialize the sidereal filter
+    t_filter = full_time.copy()
+    n_filter = np.full(full_time.size, np.nan)
+    e_filter = np.full(full_time.size, np.nan)
+    u_filter = np.full(full_time.size, np.nan)
+    ndays    = 0
+
+    # Build the sidereal filter
+    while True:
+      
+        # Extract the relevant dates
+        t0    = full_date[0] + datetime.timedelta(days=ndays+0)
+        t1    = full_date[0] + datetime.timedelta(days=ndays+1)
+        index = (t0 <= full_date) & (full_date < t1)
+        t     = full_time [index]
+        n     = full_north[index]
+        e     = full_east [index]
+        u     = full_up   [index]
+
+        # Remove the mean
+        n -= n.mean()
+        e -= e.mean()
+        u -= u.mean()
+
+        # Calculate a linear trend
+        n_slope, n_intercept, _, _, _ = stats.linregress(t, n)
+        e_slope, e_intercept, _, _, _ = stats.linregress(t, e)
+        u_slope, u_intercept, _, _, _ = stats.linregress(t, u)
+
+        # Remove the linear trend
+        n = n - (n_slope*t + n_intercept)
+        e = e - (e_slope*t + e_intercept)
+        u = u - (u_slope*t + u_intercept)
+
+        # Compute the cross-correlation between the given day and the stack
+        n_cc = xcorr.correlate(n, n_stack[:n.size], n.size)
+        e_cc = xcorr.correlate(e, e_stack[:e.size], e.size)
+        u_cc = xcorr.correlate(u, u_stack[:u.size], u.size)
+
+        # Set cross-correlation to zero outside a given range to ensure a reasonable time shift
+        n_cc[:n.size-max_shift ] = 0.0
+        e_cc[:e.size-max_shift ] = 0.0
+        u_cc[:u.size-max_shift ] = 0.0
+        n_cc[ n.size+max_shift:] = 0.0
+        e_cc[ e.size+max_shift:] = 0.0
+        u_cc[ u.size+max_shift:] = 0.0
+
+        # Find the shift that maximize the cross-correlation
+        n_shift, _ = xcorr.xcorr_max(n_cc, abs_max=False)
+        e_shift, _ = xcorr.xcorr_max(e_cc, abs_max=False)
+        u_shift, _ = xcorr.xcorr_max(u_cc, abs_max=False)
+
+        # Create the sidereal filter
+        t           = np.arange(e.size)*dt + ndays*86400.0
+        ij, i, j    = np.intersect1d(t_filter, t, assume_unique=True, return_indices=True)
+        n_filter[i] = (np.roll(n_stack, n_shift) * signal.tukey(n_stack.size, alpha=0.05))[j]
+        e_filter[i] = (np.roll(e_stack, e_shift) * signal.tukey(e_stack.size, alpha=0.05))[j]
+        u_filter[i] = (np.roll(u_stack, u_shift) * signal.tukey(u_stack.size, alpha=0.05))[j]
+
+        # Exit strategy
+        ndays = ndays + 1
+        if t1 >= full_date[-1]: break
+          
+    # Create the full time series
+    full_time        = np.arange(time[0], time[-1]+dt, dt)
+    full_date        = np.array([date[0] + datetime.timedelta(seconds=i*dt) for i in range(full_time.size)])
+    full_north       = np.full(full_time.size, np.nan)
+    full_east        = np.full(full_time.size, np.nan)
+    full_up          = np.full(full_time.size, np.nan)
+    ij, i, j         = np.intersect1d(time, full_time, assume_unique=True, return_indices=True)
+    full_north[j]    = north[i]
+    full_east [j]    = east [i]
+    full_up   [j]    = up   [i]
+
+    # Compute the RMS before sidereal filter
+    n_rms0 = north[date < eq].std()
+    e_rms0 = east [date < eq].std()
+    u_rms0 = up   [date < eq].std()
+
+    # Apply the sidereal filter
+    full_up    = full_up    - u_filter
+    full_east  = full_east  - e_filter
+    full_north = full_north - n_filter
+    if u_apply: up   [i] = full_up   [j]
+    if e_apply: east [i] = full_east [j]
+    if n_apply: north[i] = full_north[j]
+
+    # Compute the RMS after sidereal filter
+    n_rms1 = north[date < eq].std()
+    e_rms1 = east [date < eq].std()
+    u_rms1 = up   [date < eq].std()
+
+    # Print a friendly message
+    print('RMS before and after S.F. (north) = %7.2f/%7.2f (%7.2f)' % (n_rms0,n_rms1,(n_rms0-n_rms1)/n_rms0*100.0))
+    print('RMS before and after S.F. (east ) = %7.2f/%7.2f (%7.2f)' % (e_rms0,e_rms1,(e_rms0-e_rms1)/e_rms0*100.0))
+    print('RMS before and after S.F. (up   ) = %7.2f/%7.2f (%7.2f)' % (u_rms0,u_rms1,(u_rms0-u_rms1)/u_rms0*100.0))
+
+    # All done
+    return north, east, up
