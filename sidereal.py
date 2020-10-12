@@ -26,6 +26,13 @@ def filter(date, time, north, east, up, eq):
     north = north - (nslope*time + nintercept)
     east  = east  - (eslope*time + eintercept)
     up    = up    - (uslope*time + uintercept)
+    
+    # Compute the coseismic offsets
+    ib       = np.where(date <= eq + datetime.timedelta(seconds=30.0))[0]
+    ia       = np.where(date >= eq + datetime.timedelta(minutes= 5.5))[0]
+    offset_n = north[ia[0]] - north[ib[-1]]
+    offset_e = east [ia[0]] - east [ib[-1]]
+    offset_u = up   [ia[0]] - up   [ib[-1]]
 
     # Create the full time series
     full_time        = np.arange(time[0], time[-1]+dt, dt)
@@ -39,11 +46,7 @@ def filter(date, time, north, east, up, eq):
     full_up   [j]    = up   [i]
 
     # Remove the coseismic offsets
-    ib             = np.where(full_date <= eq + datetime.timedelta(seconds=30.0))[0]
     ia             = np.where(full_date >= eq + datetime.timedelta(minutes= 5.5))[0]
-    offset_n       = full_north[ia[0]] - full_north[ib[-1]]
-    offset_e       = full_east [ia[0]] - full_east [ib[-1]]
-    offset_u       = full_up   [ia[0]] - full_up   [ib[-1]]
     full_north[ia] = full_north[ia] - offset_n
     full_east [ia] = full_east [ia] - offset_e
     full_up   [ia] = full_up   [ia] - offset_u
