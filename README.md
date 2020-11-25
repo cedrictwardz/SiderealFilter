@@ -10,14 +10,23 @@ The code uses 30 sec kinematic position time series (XXXX.k.tdp). It takes the p
 
 ### Input variables: 
 
-It is possible to act like there is no earthquake by setting [eq] to some time in the future.
+[date]: Dates of the positions in a datetime format.
 
-### Input files: 
+[time]: Epoch of the positions (seconds). 
+        It is assumed that the positions are given with respect to the first epoch in the time series. 
+        Thus, the first epoch is assumed to be zero. 
 
-Note that it is assumed that the positions are given with respect to the first epoch in the time series. Thus, the first epoch is always zero.
+[north, east, up]: Positions (units don't matter)
 
+[eq]: Date of the main earthquake in a datetime format. 
+      It is possible to act like there is no earthquake by setting [eq] to some time in the future.
+
+[showme]: When set to True, it displays the stacks and the obtained filter.
+          Very useful to determine if there are indeed some repeating signals worth removing.
+     
 ## Note:
-[1] This code has not been optimised and I do not guarantee that it is bug free when using your own time series with their own particularities. Use it at you own risk.
+
+[1] This code has not been optimised and I do not guarantee that it is bug free when using it on your own time series with their own particularities. Use it at you own risk.
 
 [2] This code has been developed for 30 sec position time series, so I do not guarantee that it provides meaningful results for shorter or longer sampling interval.
 
